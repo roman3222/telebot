@@ -17,11 +17,12 @@ file_path = 'data/data.xlsx'
 
 busy_dates = []
 
+
 def load_busy_slots() -> list:
     """
     Функция для формирования списка с занятыми датами
 
-    :return:Список с занятыми датами
+    :return: Список с занятыми датами
     """
     global busy_dates
     try:
@@ -38,7 +39,7 @@ def load_busy_slots() -> list:
 
 def save_to_excel(data):
     """
-    Функция для записи данных о клиенте и дате записи
+    Функция для записи в файл данных о клиенте и дате записи
     """
     workbook = openpyxl.load_workbook(file_path)
 
@@ -55,7 +56,7 @@ def save_to_excel(data):
 
 @bot.message_handler(commands=['start'])
 def handler_start(message):
-    text_mess = "Привет! Я бот для записи, как твоё имя?"
+    text_mess = "Привет! Я бот для записи, напишите пожалуйста ваше имя"
     bot.send_message(message.chat.id, text_mess)
     bot.register_next_step_handler(message, handle_name)
 
@@ -65,7 +66,7 @@ def handler_get_file(message):
     """
     Функция для запроса файла с данными о клиентах
     """
-    chat_id = os.getenv('user')
+    chat_id = os.getenv('user_file')
     file = open('data/data.xlsx', 'rb')
     bot.send_document(chat_id, file)
 
@@ -86,7 +87,7 @@ def handler_phone(message, user_data):
         bot.register_next_step_handler(message, handler_date_time, user_data)
     else:
         bot.send_message(message.chat.id, "Проверьте правильность телефонного номера")
-        bot.register_next_step_handler(message, handler_phone, user_data)
+        bot.register_next_step_handler(message, show_available_slots, user_data)
 
 
 @bot.message_handler(func=lambda message: message.text in get_available_slots())
@@ -95,14 +96,17 @@ def handler_date_time(message, user_data):
     if selected_date in get_available_slots():
         bot.send_message(message.chat.id, f"Вы выбрали дату: {selected_date}")
         user_data['date_time'] = selected_date
-        save_to_excel([user_data['name'], user_data['phone'], user_data['date_time']])
+        user_data['user_id'] = message.from_user.id
+        save_to_excel([user_data['name'], user_data['phone'], user_data['date_time'], user_data['user_id']])
         send_message_boss(user_data)
         text_mess = (f"Вы успешно записаны\n"
                      f"Дата и время приёма: {user_data['date_time']}")
-        bot.send_message(message.chat.id, text_mess)
+
+        # Убираем кнопки после выбора пользователя
+        close_button = types.ReplyKeyboardRemove()
+        bot.send_message(message.chat.id, text_mess, reply_markup=close_button)
     else:
         bot.send_message(message.chat.id, 'Выберите дату из списка')
-        chat_id = message.chat.id
         bot.register_next_step_handler(message, handler_date_time, user_data)
 
 
@@ -143,7 +147,7 @@ def generate_all_slots() -> list:
 
 def get_filter_all_slots() -> list:
     """
-    Фнкция для формирования отфильтрованного списка(исключение Воскресенья)
+    Функция для формирования отфильтрованного списка(исключение Воскресенья)
 
     :return: Отфильтрованый список
     """
@@ -180,7 +184,6 @@ def get_available_slots() -> list:
 def show_available_slots(chat_id):
     """
     Функция для предоставления пользователю список свободных дат
-    :return:
     """
     slots = get_available_slots()
 
@@ -201,7 +204,7 @@ def send_message_boss(user_data):
     """
     Функция для отправки данных о новой записи на приём
     """
-    user_id = os.getenv('user')
+    user_id = os.getenv('user_message')
     bot.send_message(user_id, f"Новая запись: {user_data['name']}\n{user_data['phone']}\n{user_data['date_time']}")
 
 
