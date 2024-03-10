@@ -1,11 +1,13 @@
 import telebot
-from telebot import types
-import openpyxl
-from openpyxl.utils import get_column_letter
+import pytz
 import os
+import openpyxl
+import schedule
+import time
+from telebot import types
+from openpyxl.utils import get_column_letter
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-import pytz
 
 load_dotenv()
 
@@ -16,6 +18,8 @@ bot = telebot.TeleBot(TOKEN)
 file_path = 'data/data.xlsx'
 
 busy_dates = []
+
+user_dict = {}
 
 
 def load_busy_slots() -> list:
@@ -35,6 +39,26 @@ def load_busy_slots() -> list:
         return busy_dates
     except Exception as e:
         print(f"Error loading busy_dates: {e}")
+
+
+def load_user_dict() -> dict:
+    """
+    Формирование словаря для напоминания о записи!
+    """
+    global user_dict
+
+    book = openpyxl.load_workbook(file_path)
+    sheet = book.active
+
+    date = sheet['C']
+    user = sheet['D']
+
+    user_date = [str(cell.value) for cell in date if cell.value is not None]
+    user_id = [str(cell.value) for cell in user if cell.value is not None]
+
+    user_dict = {date_value: id_value for date_value, id_value in zip(user_date, user_id)}
+
+    return user_dict
 
 
 def save_to_excel(data):
@@ -62,7 +86,7 @@ def handler_start(message):
 
 
 @bot.message_handler(commands=['file'])
-def handler_get_file(message):
+def handler_get_file():
     """
     Функция для запроса файла с данными о клиентах
     """
@@ -105,6 +129,7 @@ def handler_date_time(message, user_data):
         # Убираем кнопки после выбора пользователя
         close_button = types.ReplyKeyboardRemove()
         bot.send_message(message.chat.id, text_mess, reply_markup=close_button)
+
     else:
         bot.send_message(message.chat.id, 'Выберите дату из списка')
         bot.register_next_step_handler(message, handler_date_time, user_data)
@@ -208,8 +233,28 @@ def send_message_boss(user_data):
     bot.send_message(user_id, f"Новая запись: {user_data['name']}\n{user_data['phone']}\n{user_data['date_time']}")
 
 
+def schedule_reminder():
+    user_data = load_user_dict()
+
+    for date in user_data.keys():
+        reminder_time = datetime.strptime(date, '%d-%m-%Y %H:%M') - timedelta(hours=11, minutes=30)
+        schedule.every().day.at(reminder_time.strftime('%H:%M')).do(send_reminder, date)
+
+
+def send_reminder(date):
+    data = load_user_dict()
+
+    user_id = data[date]
+
+    bot.send_message(user_id, f"Напоминание: У вас запись через 24 часа на {date}")
+
+
 def main():
     bot.polling(none_stop=True)
+    schedule_reminder()
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
 
 
 if __name__ == '__main__':
